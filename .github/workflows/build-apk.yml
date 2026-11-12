@@ -1,0 +1,49 @@
+name: Build APK
+
+# Run it from the Actions tab (Run workflow), or it runs on every push.
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Lets you upload just the project .zip from a phone: it is unpacked here.
+      - name: Find the project (unzip it if it was uploaded as a zip)
+        run: |
+          if [ -z "$(find . -name settings.gradle.kts -not -path './.git/*' | head -n1)" ]; then
+            ZIP="$(ls ./*.zip 2>/dev/null | head -n1)"
+            if [ -z "$ZIP" ]; then echo "No project or .zip found in the repository."; exit 1; fi
+            unzip -q "$ZIP"
+          fi
+          SETTINGS="$(find . -name settings.gradle.kts -not -path './.git/*' | head -n1)"
+          echo "PROJECT_DIR=$(dirname "$SETTINGS")" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.7"
+
+      - name: Run unit tests
+        working-directory: ${{ env.PROJECT_DIR }}
+        continue-on-error: true
+        run: gradle :app:testDebugUnitTest --no-daemon
+
+      - name: Build debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
+        run: gradle :app:assembleDebug --no-daemon
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FakeNewsDetector-apk
+          path: ${{ env.PROJECT_DIR }}/app/build/outputs/apk/debug/*.apk
+          
